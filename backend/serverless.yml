@@ -1,54 +1,121 @@
 service:
-  name: serverless-todo-app
+  name: serverless-task-app
 
 plugins:
   - serverless-webpack
-  - serverless-iam-roles-per-function
+  # - serverless-iam-roles-per-function
 
 provider:
   name: aws
   runtime: nodejs12.x
 
   stage: ${opt:stage, 'dev'}
-  region: ${opt:region, 'us-east-1'}
+  region: ${opt:region, 'sa-east-1'}
+
+  environment:
+    TASKS_TABLE: Tasks-${self:provider.stage}
+    TASK_ID_INDEX: TaskIdIndex
+    TASKS_S3_BUCKET: serverless-lucas-tasks-${self:provider.stage}
+  
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:Query
+        - dynamodb:DeleteItem
+        - dynamodb:UpdateItem
+      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}/index/${self:provider.environment.TASK_ID_INDEX}
 
 functions:
 
   Auth:
     handler: src/lambda/auth/auth0Authorizer.handler
+    environment:
+      AUTH_0_SECRET: ola
 
-  # TODO: Configure this function
-  GetTodos:
-    handler: src/lambda/http/getTodos.handler
+  GetTasks:
+    handler: src/lambda/http/getTasks.handler
     events:
       - http:
           method: get
-          path: todos
+          path: tasks
+          cors: true
+          # authorizer: Auth
+    # iamRoleStatements:
+    #   - Effect: Allow
+    #     Action:
+    #       - dynamodb:Query
+    #     Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
 
-  # TODO: Configure this function
-  GetTodos:
-  CreateTodo:
-    handler: src/lambda/http/createTodo.handler
+  CreateTask:
+    handler: src/lambda/http/createTask.handler
     events:
       - http:
           method: post
-          path: todos
+          path: tasks
+          cors: true
+          # authorizer: Auth
+          request:
+            schema:
+              'application/json':
+                type: object
+                properties:
+                  name:
+                    type: string
+                  dueDate:
+                    type: string
+                required:
+                  - name
+                  - dueDate
+    # iamRoleStatements:
+    #   - Effect: Allow
+    #     Action:
+    #       - dynamodb:PutItem
+    #     Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
 
   # TODO: Configure this function
-  UpdateTodo:
-    handler: src/lambda/http/updateTodo.handler
+  UpdateTask:
+    handler: src/lambda/http/updateTask.handler
     events:
       - http:
           method: patch
-          path: todos/{todoId}
+          path: tasks/{taskId}
+          cors: true
+          # authorizer: Auth
+          request:
+            schema:
+              'application/json':
+                type: object
+                properties:
+                  name:
+                    type: string
+                  dueDate:
+                    type: string
+                required:
+                  - name
+                  - dueDate
 
-  # TODO: Configure this function
-  DeleteTodo:
-    handler: src/lambda/http/deleteTodo.handler
+  DeleteTask:
+    handler: src/lambda/http/deleteTask.handler
     events:
       - http:
           method: delete
-          path: todos/{todoId}
+          path: tasks/{taskId}
+          cors: true
+          # authorizer: Auth
+    # iamRoleStatements:
+    #   - Effect: Allow
+    #     Action:
+    #       - dynamodb:DeleteItem
+    #     Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
+    #   - Effect: Allow
+    #     Action:
+    #       - dynamodb:Query
+    #     Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}/index/${self:provider.environment.TASK_ID_INDEX}
 
   # TODO: Configure this function
   GenerateUploadUrl:
@@ -56,8 +123,44 @@ functions:
     events:
       - http:
           method: post
-          path: todos/{todoId}/attachment
+          path: tasks/{taskId}/attachment
+          cors: true
+          # authorizer: Auth
 
 resources:
   Resources:
-    # TODO: Add any necessary AWS resources
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+
+    TasksDynamoDBTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: taskId
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: createdAt
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.TASKS_TABLE}
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.TASK_ID_INDEX}
+            KeySchema:
+              - AttributeName: taskId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
