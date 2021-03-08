@@ -26,7 +26,7 @@ functions:
   Auth:
     handler: src/lambda/auth/auth0Authorizer.handler
     environment:
-      AUTH_0_SECRET: ola
+      AUTH_0_SECRET: cx0OgC2QDVEX4-YuJT1fKoOSJ4TMD8JFchzTVRkCsMYxeW-Kv1Pj7KTiaOmIDSZ4
 
   GetTasks:
     handler: src/lambda/http/getTasks.handler
@@ -35,7 +35,7 @@ functions:
           method: get
           path: tasks
           cors: true
-          # authorizer: Auth
+          authorizer: Auth
     iamRoleStatements:
       - Effect: Allow
         Action:
@@ -49,7 +49,7 @@ functions:
           method: post
           path: tasks
           cors: true
-          # authorizer: Auth
+          authorizer: Auth
           request:
             schema:
               'application/json':
@@ -75,7 +75,7 @@ functions:
           method: patch
           path: tasks/{taskId}
           cors: true
-          # authorizer: Auth
+          authorizer: Auth
           request:
             schema:
               'application/json':
@@ -103,7 +103,7 @@ functions:
           method: delete
           path: tasks/{taskId}
           cors: true
-          # authorizer: Auth
+          authorizer: Auth
     iamRoleStatements:
       - Effect: Allow
         Action:
@@ -118,7 +118,7 @@ functions:
           method: post
           path: tasks/{taskId}/attachment
           cors: true
-          # authorizer: Auth
+          authorizer: Auth
     iamRoleStatements:
       - Effect: Allow
         Action:

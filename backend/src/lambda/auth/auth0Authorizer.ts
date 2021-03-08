@@ -7,7 +7,7 @@ import { JwtPayload } from '../../auth/JwtPayload';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('auth')
-const secretField = process.env.AUTH_0_SECRET_FIELD
+const secretField = process.env.AUTH_0_SECRET
 
 export const handler = async (
   event: APIGatewayTokenAuthorizerEvent
