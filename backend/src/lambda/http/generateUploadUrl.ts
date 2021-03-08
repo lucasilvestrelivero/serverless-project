@@ -1,15 +1,25 @@
-import 'source-map-support/register'
+import 'source-map-support/register';
 
-import { APIGatewayProxyEvent, APIGatewayProxyResult, APIGatewayProxyHandler } from 'aws-lambda'
+import { APIGatewayProxyEvent, APIGatewayProxyHandler, APIGatewayProxyResult } from 'aws-lambda';
+
+import { getUploadUrl } from '../../businessLogic/taskBL';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('uploadURL')
 
 export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const taskId = event.pathParameters.taskId
+  // Print the log in the CloudWatch CreateTask Group
+  logger.info('Processing event: ', event);
+
+  const taskId = event.pathParameters.taskId;
+
+  const url = getUploadUrl(taskId);
 
   return {
     statusCode: 200,
     headers: {
       'Access-Control-Allow-Origin': '*'
     },
-    body: JSON.stringify(taskId)
+    body: JSON.stringify({uploadUrl: url})
   };
 }

@@ -3,7 +3,7 @@ service:
 
 plugins:
   - serverless-webpack
-  # - serverless-iam-roles-per-function
+  - serverless-iam-roles-per-function
 
 provider:
   name: aws
@@ -12,23 +12,14 @@ provider:
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'sa-east-1'}
 
+  tracing:
+    lambda: true
+    apiGateway: true
+
   environment:
     TASKS_TABLE: Tasks-${self:provider.stage}
-    TASK_ID_INDEX: TaskIdIndex
     TASKS_S3_BUCKET: serverless-lucas-tasks-${self:provider.stage}
-  
-  iamRoleStatements:
-    - Effect: Allow
-      Action:
-        - dynamodb:PutItem
-        - dynamodb:Query
-        - dynamodb:DeleteItem
-        - dynamodb:UpdateItem
-      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
-    - Effect: Allow
-      Action:
-        - dynamodb:Query
-      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}/index/${self:provider.environment.TASK_ID_INDEX}
+    SIGNED_URL_EXPIRATION_SECONDS: 300
 
 functions:
 
@@ -45,11 +36,11 @@ functions:
           path: tasks
           cors: true
           # authorizer: Auth
-    # iamRoleStatements:
-    #   - Effect: Allow
-    #     Action:
-    #       - dynamodb:Query
-    #     Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
 
   CreateTask:
     handler: src/lambda/http/createTask.handler
@@ -71,13 +62,12 @@ functions:
                 required:
                   - name
                   - dueDate
-    # iamRoleStatements:
-    #   - Effect: Allow
-    #     Action:
-    #       - dynamodb:PutItem
-    #     Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
 
-  # TODO: Configure this function
   UpdateTask:
     handler: src/lambda/http/updateTask.handler
     events:
@@ -95,9 +85,16 @@ functions:
                     type: string
                   dueDate:
                     type: string
+                  done:
+                    type: boolean
                 required:
                   - name
                   - dueDate
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
 
   DeleteTask:
     handler: src/lambda/http/deleteTask.handler
@@ -107,17 +104,13 @@ functions:
           path: tasks/{taskId}
           cors: true
           # authorizer: Auth
-    # iamRoleStatements:
-    #   - Effect: Allow
-    #     Action:
-    #       - dynamodb:DeleteItem
-    #     Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
-    #   - Effect: Allow
-    #     Action:
-    #       - dynamodb:Query
-    #     Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}/index/${self:provider.environment.TASK_ID_INDEX}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:DeleteItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
 
-  # TODO: Configure this function
   GenerateUploadUrl:
     handler: src/lambda/http/generateUploadUrl.handler
     events:
@@ -126,6 +119,15 @@ functions:
           path: tasks/{taskId}/attachment
           cors: true
           # authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+        Resource: arn:aws:s3:::${self:provider.environment.TASKS_S3_BUCKET}/*
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TASKS_TABLE}
 
 resources:
   Resources:
@@ -146,21 +148,44 @@ resources:
         AttributeDefinitions:
           - AttributeName: taskId
             AttributeType: S
-          - AttributeName: createdAt
-            AttributeType: S
           - AttributeName: userId
             AttributeType: S
         KeySchema:
           - AttributeName: userId
             KeyType: HASH
-          - AttributeName: createdAt
+          - AttributeName: taskId
             KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:provider.environment.TASKS_TABLE}
-        GlobalSecondaryIndexes:
-          - IndexName: ${self:provider.environment.TASK_ID_INDEX}
-            KeySchema:
-              - AttributeName: taskId
-                KeyType: HASH
-            Projection:
-              ProjectionType: ALL
+
+    AttachmentsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.TASKS_S3_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            -
+              AllowedOrigins:
+                - '*'
+              AllowedHeaders:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+
+    BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        PolicyDocument:
+          Id: MyPolicy
+          Version: "2012-10-17"
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: '*'
+              Action: 's3:GetObject'
+              Resource: 'arn:aws:s3:::${self:provider.environment.TASKS_S3_BUCKET}/*'
+        Bucket: !Ref AttachmentsBucket
